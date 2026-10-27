@@ -1,42 +1,24 @@
-var builder = WebApplication.CreateBuilder(args);
+using System.Diagnostics;
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
-
-var app = builder.Build();
-
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// 1. Turn on tracing (without this, StartActivity returns null)
+ActivitySource.AddActivityListener(new ActivityListener
 {
-    app.MapOpenApi();
-}
+    ShouldListenTo = _ => true,
+    Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData
+});
 
-app.UseHttpsRedirection();
+var source = new ActivitySource("Test");
 
-var summaries = new[]
+// 2. Start parent
+using (var parent = source.StartActivity("ParentStep"))
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    Console.WriteLine($"Parent SpanId:  {parent?.SpanId}");
 
-app.MapGet("/weatherforecast", () =>
+    // 3. Start child inside the parent block
+    using (var child = source.StartActivity("ChildStep"))
     {
-        var forecast = Enumerable.Range(1, 5).Select(index =>
-                new WeatherForecast
-                (
-                    DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                    Random.Shared.Next(-20, 55),
-                    summaries[Random.Shared.Next(summaries.Length)]
-                ))
-            .ToArray();
-        return forecast;
-    })
-    .WithName("GetWeatherForecast");
-Console.WriteLine("hello");
-
-app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+        Console.WriteLine($"Child SpanId:   {child?.SpanId}");
+        Console.WriteLine($"Child's Parent: {child?.ParentSpanId}");
+        Console.WriteLine($"Same TraceId?:  {parent?.TraceId == child?.TraceId}");
+    }
 }
